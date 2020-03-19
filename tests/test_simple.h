@@ -7,14 +7,14 @@ void test_simple() {
     printf("Starting: simple test\n\n");
 
     srgs_t * context = srgs_create(
-        256, 256,
+        64, 64,
         srgs_test_alloc,
         srgs_test_dealloc,
         srgs_test_realloc     
     );
 
 
-    uint32_t id = srgs_texture_create(context, 32, 32);
+    uint32_t id = srgs_texture_create(context, 20, 20);
     srgs_texture_blank(context, id, 0xaa);
     srgs_test_assert(srgs_texture_verify(context, id));
 
@@ -32,9 +32,9 @@ void test_simple() {
     srgs_object_set_render_mode(context, object, srgs__object_render_mode__texture);
 
     float position[9] = {
-        0.f, 0.f, 0.f,
-        1.f, 1.f, 1.f,
-        0.f, 1.f, 2.f 
+        -.3f,  .1f, 0.f,
+         .1f,  .4f, 0.f,
+         .2f, -.7f, 0.f 
     };
 
     srgs_object_define_vertices(
@@ -43,6 +43,20 @@ void test_simple() {
         srgs__object_vertex_channel__position,
         position
     );
+
+
+    uint32_t indices[] = {
+        0, 1, 2
+    };
+
+    srgs_object_define_indices(
+        context,
+        object,
+        3,
+        indices
+    );
+
+
 
 
 
@@ -56,7 +70,7 @@ void test_simple() {
     srgs_render(context, 1, &list);
 
 
-
+    srgs_test_print_framebuffer(context);
 
 
 

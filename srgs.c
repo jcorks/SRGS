@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <assert.h>
+#include <stdio.h>
 
 #define SRGS_DEADADDRESSTAG ((void*)0xB00)
 
@@ -97,6 +98,7 @@ typedef struct {
     uint32_t texture;
     uint32_t vertexCount;
     uint32_t matrixID;
+    uint32_t indexCount;
     srgs__object_render_mode renderMode;
     srgs__object_depth_mode depthMode;
     
@@ -104,6 +106,7 @@ typedef struct {
     // uv
     // abcd
     float  * verticesInterleaved;
+    uint32_t * indices;
 } srgs_object_t;
 
 
@@ -268,10 +271,6 @@ void srgs_clear_color(srgs_t * s) {
 }
 
 
-void srgs_render(srgs_t * s, uint32_t count, uint32_t * renderListIDs) {
-    // *Renders ur vertices* OwO
-    
-}
 
 
 
@@ -420,6 +419,8 @@ uint32_t srgs_object_create(srgs_t * t) {
     out->depthMode = srgs__object_depth_mode__less;
     out->verticesInterleaved = NULL;
     out->matrixID = 0;
+    out->indices = NULL;
+    out->indexCount = 0;
     return id;
 }
 
@@ -437,6 +438,7 @@ uint32_t srgs_object_clone(srgs_t * t, uint32_t idIn) {
     out->texture = old->texture;
     out->matrixID = old->matrixID;
     out->vertexCount = old->vertexCount;
+    out->indexCount = old->indexCount;
     out->renderMode = old->renderMode;
     out->depthMode = old->depthMode;
     out->verticesInterleaved = t->alloc(out->vertexCount*SRGS__FLOATS_PER_VERTEX);
@@ -444,6 +446,12 @@ uint32_t srgs_object_clone(srgs_t * t, uint32_t idIn) {
         out->verticesInterleaved,
         old->verticesInterleaved,
         SRGS__FLOATS_PER_VERTEX * out->vertexCount
+    );
+    out->indices = t->alloc(out->indexCount*sizeof(uint32_t));
+    srgs_memcpy_int(
+        out->indices,
+        old->indices,
+        sizeof(uint32_t) * out->indexCount
     );
 
     return id;
@@ -453,13 +461,15 @@ uint32_t srgs_object_clone(srgs_t * t, uint32_t idIn) {
 void srgs_object_destroy(srgs_t * t, uint32_t id) {
     srgs_object_t * out = id_table_fetch(t->objects, srgs_object_t, id);
     t->deloc(out->verticesInterleaved);
+    t->deloc(out->indices);
     out->verticesInterleaved = SRGS_DEADADDRESSTAG;
+    out->indices = SRGS_DEADADDRESSTAG;
     id_table_recycle_id(t->objects, id);    
 }
 
 void srgs_object_set_vertex_count(srgs_t * t, uint32_t id, uint32_t vcount) {
     srgs_object_t * o = id_table_fetch(t->objects, srgs_object_t, id);   
-    o->verticesInterleaved = t->reloc(o->verticesInterleaved, vcount*SRGS__FLOATS_PER_VERTEX);
+    o->verticesInterleaved = t->reloc(o->verticesInterleaved, vcount*SRGS__FLOATS_PER_VERTEX*sizeof(float));
     o->vertexCount = vcount;
 }
 
@@ -504,7 +514,7 @@ void srgs_object_update_vertices(
             iter += SRGS__FLOATS_PER_VERTEX;
             src  += 3;
         }
-        
+        break;
 
       case srgs__object_vertex_channel__uvs:
         iter += 3;
@@ -514,7 +524,7 @@ void srgs_object_update_vertices(
             iter += SRGS__FLOATS_PER_VERTEX;
             src  += 2;
         }
-
+        break;
 
       case srgs__object_vertex_channel__color:
         iter += 5;
@@ -526,10 +536,40 @@ void srgs_object_update_vertices(
             iter += SRGS__FLOATS_PER_VERTEX;
             src  += 4;
         }
+        break;
     }
 
 
 }
+
+
+const float * srgs_object_get_vertices(
+    const srgs_t * s, 
+    int32_t id
+) {
+    srgs_object_t * o = id_table_fetch(s->objects, srgs_object_t, id);   
+    return o->verticesInterleaved;
+}
+
+
+void srgs_object_define_indices(
+    srgs_t * s, 
+    uint32_t id, 
+    uint32_t count, 
+    uint32_t * indices
+) {
+    srgs_object_t * o = id_table_fetch(s->objects, srgs_object_t, id);   
+    s->deloc(o->indices);
+    o->indices = s->alloc(count*sizeof(uint32_t));
+    o->indexCount = count;
+    srgs_memcpy_int(
+        o->indices,
+        indices,
+        count
+    );
+}
+
+
 
 
 void srgs_object_set_render_mode(srgs_t * t, uint32_t id, srgs__object_render_mode mode) {
@@ -622,7 +662,7 @@ void srgs_renderlist_set_objects(srgs_t * t, uint32_t id, uint32_t count, uint32
     t->deloc(l->objects);
     l->objects = t->alloc(count*sizeof(uint32_t));
     l->size = count;
-    srgs_memcpy_int(t->alloc, renderListIDs, count*sizeof(uint32_t));
+    srgs_memcpy_int(l->objects, renderListIDs, count);
 }
 
 
@@ -736,13 +776,19 @@ uint32_t * id_table_get_alive_ids(srgs_id_table_t * t, uint32_t * count) {
 
 
 
-/* Linear algebra implementation */
-#ifdef SRGS__LINEAR_ALGEBRA
 
 
-srgs_vector4_t * srgs_utility_new_vec4() {
-	return (srgs_vector4*) malloc(sizeof(srgs_vector4));
-}
+
+
+
+
+
+
+
+
+
+
+
 
 srgs_vector3_t VEC3(float x, float y, float z) {
     srgs_vector3_t out;
@@ -981,7 +1027,7 @@ float srgs_utility_vec_magnitude(const srgs_vector3_t * a) {
 }
 
 
-srgs_vector3_t srgs_utility_surface_normal(const srgs_vector3* p1, const srgs_vector3_t * p2, const srgs_vector3_t * p3) {
+srgs_vector3_t srgs_utility_surface_normal(const srgs_vector3_t * p1, const srgs_vector3_t * p2, const srgs_vector3_t * p3) {
     srgs_vector3_t p21 = {
         p1->x - p2->x,
         p1->y - p2->y,
@@ -1001,12 +1047,6 @@ srgs_vector3_t srgs_utility_surface_normal(const srgs_vector3* p1, const srgs_ve
 
 
 
-static float identityMatrix[16] = {
-	1.f, 0.f, 0.f, 0.f,
-	0.f, 1.f, 0.f, 0.f,
-	0.f, 0.f, 1.f, 0.f,
-	0.f, 0.f, 0.f, 1.f
-};
 
 static float baseTranslationMatrix[16] = {
 	1.f, 0.f, 0.f, 0.f,
@@ -1051,7 +1091,6 @@ static float baseLookAtMatrix[16] = {
 	0.f, 0.f, 1.f, 0.f,
 	0.f, 0.f, 0.f, 1.f
 };
-
 
 
 
@@ -1414,9 +1453,374 @@ srgs_vector3_t srgs_utility_matrix_transform(const srgs_matrix_t * m, const srgs
 
 
 
+static void srgs_utility_matrix_transform_inplace(const srgs_matrix_t * m, srgs_vector3_t * v) {
+	const float * matr = (float *) m;
+
+	float f0 = matr[0]*v->x + matr[1]*v->y + matr[2]*v->z + matr[3];
+	float f1 = matr[4]*v->x + matr[5]*v->y + matr[6]*v->z + matr[7];
+	float f2 = matr[8]*v->x + matr[9]*v->y + matr[10]*v->z + matr[11];
+
+    v->x = f0;
+    v->y = f1;
+    v->z = f2;
+    
+}
 
 
-#endif
+
+
+static volatile float min3(float x, float y, float z) {
+    if (x < y) {
+        if (x < z)
+            return x;
+        else
+            return z;
+    } else {
+        if (y < z)
+            return y;
+        else 
+            return z;
+    }
+}
+
+
+static volatile float max3(float x, float y, float z) {
+    if (x > y) {
+        if (x > z)
+            return x;
+        else
+            return z;
+    } else {
+        if (y > z)
+            return y;
+        else 
+            return z;
+    }
+}
+
+
+
+static int depth_l(int current, int in) {
+    return in < current;
+}
+
+static int depth_lte(int current, int in) {
+    return in <= current;
+}
+
+static int depth_eq(int current, int in) {
+    return in == current;
+}
+
+static int depth_gt(int current, int in) {
+    return in > current;
+}
+
+static int depth_gte(int current, int in) {
+    return in >= current;
+}
+
+
+static int depth_always(int current, int in) {
+    return 1;
+}
+
+static int depth_never(int current, int in) {
+    return 0;
+}
+
+
+static void srgs_render__renderlist(
+    srgs_t * s, 
+    srgs_renderlist_t * list, 
+    srgs_texture_t * framebuffer, 
+    srgs_texture_t * depthbuffer
+)  {
+    
+
+
+    uint32_t i, n;
+    srgs_object_t * obj;
+    srgs_texture_t * texture;
+
+    // for any matrix, if set to ID 0, this is reserved as the 
+    // "identity matrix", so calculation is skipped if its 
+    // set to zero.
+    srgs_matrix_t * objTF = NULL;
+    srgs_matrix_t * listTF = NULL;;
+
+    // triangles to transform and rasterize
+    uint32_t triCount, fetch;    
+
+    // vertices to be transformed. Forms one triangle
+    srgs_vector3_t pos[3];
+
+    // barycentric transform and utility data
+    float barycentricTF[4];
+    float barycentricDet;
+    float barycentricInv[4];
+    float barycentricCartVx[3];
+    float barycentricCartVy[3];
+
+
+    float bias0,
+          bias1,
+          bias2,
+
+          xdiff,
+          ydiff,
+
+          convz,
+          * color0,
+          * color1,
+          * color2,
+
+          * uv0,
+          * uv1,
+          * uv2,
+
+          uvx,
+          uvy;
+
+    // bounding and iterators
+    int boundXmin,
+        boundXmax,
+        boundYmin,
+        boundYmax,
+        x, y;
+
+    
+    
+    uint8_t fragDepth[4];
+
+
+    int (*depthTest)(int, int);
+
+
+
+
+
+
+
+    
+
+    if (list->matrixID)
+        listTF = id_table_fetch(s->matrices, srgs_matrix_t, list->matrixID);
+    
+
+
+    for(i = 0; i < list->size; ++i) {
+        obj = id_table_fetch(s->objects, srgs_object_t, list->objects[i]);
+        objTF = NULL;
+        // choose depth test
+
+        switch(obj->depthMode) {
+          case srgs__object_depth_mode__less:         depthTest = depth_l; break;
+          case srgs__object_depth_mode__lessequal:    depthTest = depth_lte; break;
+          case srgs__object_depth_mode__equal:        depthTest = depth_eq; break;
+          case srgs__object_depth_mode__greater:      depthTest = depth_gt; break;
+          case srgs__object_depth_mode__greaterequal: depthTest = depth_gte; break;
+          case srgs__object_depth_mode__always:       depthTest = depth_always; break;
+          case srgs__object_depth_mode__never:        depthTest = depth_never; break;
+        }
+
+
+
+        // skip object entirely.
+        if (depthTest == depth_never) continue;
+        
+
+        if (obj->matrixID) {
+            objTF = id_table_fetch(s->matrices, srgs_matrix_t, obj->matrixID);
+        }
+
+
+        triCount = obj->indexCount/3;
+        for(n = 0; n < triCount; ++n) {
+
+            pos[0] = *((srgs_vector3_t*)(obj->verticesInterleaved+obj->indices[n*3+0]));
+            pos[1] = *((srgs_vector3_t*)(obj->verticesInterleaved+obj->indices[n*3+1]));
+            pos[2] = *((srgs_vector3_t*)(obj->verticesInterleaved+obj->indices[n*3+2]));
+
+
+
+
+
+            // first transform vertices based on object.
+            if (objTF) {
+                srgs_utility_matrix_transform_inplace(objTF, pos);
+                srgs_utility_matrix_transform_inplace(objTF, pos+1);
+                srgs_utility_matrix_transform_inplace(objTF, pos+2);
+            }    
+
+
+            // then transform based on list
+            if (listTF) {
+                srgs_utility_matrix_transform_inplace(listTF, pos);
+                srgs_utility_matrix_transform_inplace(listTF, pos+1);
+                srgs_utility_matrix_transform_inplace(listTF, pos+2);
+            }    
+
+
+
+
+            // prepare barycentric transform.
+            // this determines which fragments are within the object.
+            barycentricCartVx[0] = (pos[0].x+1)/2.f;
+            barycentricCartVy[0] = (pos[0].y+1)/2.f;
+
+            barycentricCartVx[1] = (pos[1].x+1)/2.f;
+            barycentricCartVy[1] = (pos[1].y+1)/2.f;
+
+            barycentricCartVx[2] = (pos[2].x+1)/2.f;
+            barycentricCartVy[2] = (pos[2].y+1)/2.f;
+
+
+            barycentricTF[0] = (barycentricCartVx[0] - barycentricCartVx[2]);
+            barycentricTF[1] = (barycentricCartVx[1] - barycentricCartVx[2]);
+            barycentricTF[2] = (barycentricCartVx[0] - barycentricCartVx[2]);
+            barycentricTF[3] = (barycentricCartVx[1] - barycentricCartVx[2]);
+
+            barycentricDet = 1/(barycentricTF[0]*barycentricTF[1] -
+                                barycentricTF[1]*barycentricTF[2]);
+
+            barycentricInv[0] = barycentricTF[3] * barycentricDet;
+            barycentricInv[1] =-barycentricTF[1] * barycentricDet;
+            barycentricInv[2] =-barycentricTF[2] * barycentricDet;
+            barycentricInv[3] = barycentricTF[0] * barycentricDet;
+
+
+            
+
+
+            // upper and lower bounds to restrict which fragments to test
+            // most optimization should go here
+            boundXmin = framebuffer->w * (min3(pos[0].x, pos[1].x, pos[2].x)+1)/2.f;
+            boundYmin = framebuffer->h * (min3(pos[0].y, pos[1].y, pos[2].y)+1)/2.f;
+            boundXmax = framebuffer->w * (max3(pos[0].x, pos[1].x, pos[2].x)+1)/2.f;
+            boundYmax = framebuffer->h * (max3(pos[0].y, pos[1].y, pos[2].y)+1)/2.f;
+
+
+            if (boundXmin < 0) boundXmin = 0;
+            if (boundXmax >= framebuffer->w) boundXmax = framebuffer->w-1;
+            if (boundYmin < 0) boundYmin = 0;
+            if (boundYmax >= framebuffer->h) boundYmax = framebuffer->h-1;
+
+
+            for(y = boundYmin; y <= boundYmax; ++y) {
+                for(x = boundXmin; x <= boundXmax; ++x) {
+                    
+                    // use the barycentric transform to get "biases" toward  
+                    // each vertex. This determines how to blend colors and 
+                    // UVs.
+
+                    xdiff = x - barycentricCartVx[2];
+                    ydiff = y - barycentricCartVy[2];
+
+                    bias0 = barycentricInv[0]*xdiff + barycentricInv[1]*ydiff;
+                    bias1 = barycentricInv[2]*xdiff + barycentricInv[3]*ydiff;
+                    bias2 = 1 - bias0 - bias1;
+
+
+                    
+                    if (bias0 < 0 || bias1 < 0 || bias2 < 0) continue;
+
+
+
+                    // next check to see if it passes the depth test
+                    convz = bias0 * pos[0].z +
+                            bias1 * pos[1].z +
+                            bias2 * pos[2].z;
+
+                    // near/far clipping
+                    if (convz < -1.f || convz > 1.0) continue;
+
+                    fragDepth[0] = ((convz + 1.f)/2.f) * 0xff;
+                    uint32_t fragment = (x + y*depthbuffer->w)*4;
+                    if (depthTest(depthbuffer->data[fragment], fragDepth[0])) {
+
+                        // update depth buffer (1st byte only)
+                        depthbuffer->data[fragment] = fragDepth[0];
+
+
+
+                        // TODO: ALPHA BLENDING mode
+                        switch(obj->renderMode) {
+
+                          // replace with incoming color
+                          case srgs__object_render_mode__color:
+                            color0 = ((float*)obj->verticesInterleaved+obj->indices[n*3+0])+5;
+                            color1 = ((float*)obj->verticesInterleaved+obj->indices[n*3+1])+5;
+                            color2 = ((float*)obj->verticesInterleaved+obj->indices[n*3+2])+5;
+
+                            framebuffer->data[fragment  ] = bias0*color0[0] + bias1*color1[0] + bias2*color2[0];
+                            framebuffer->data[fragment+1] = bias0*color0[1] + bias1*color1[1] + bias2*color2[1];
+                            framebuffer->data[fragment+2] = bias0*color0[2] + bias1*color1[2] + bias2*color2[2];
+                            framebuffer->data[fragment+3] = bias0*color0[3] + bias1*color1[3] + bias2*color2[3];
+                            break;
+
+                          // replace with incoming texel fetch
+                          case srgs__object_render_mode__texture: 
+                            uv0 = ((float*)obj->verticesInterleaved+obj->indices[n*3+0])+3;
+                            uv1 = ((float*)obj->verticesInterleaved+obj->indices[n*3+1])+3;
+                            uv2 = ((float*)obj->verticesInterleaved+obj->indices[n*3+2])+3;
+
+                            uvx = bias0*uv0[0] + bias1*uv1[0] + bias2*uv2[0];
+                            uvy = bias0*uv0[0] + bias1*uv1[0] + bias2*uv2[0];
+    
+                            if (uvx < 0) uvx = 0;
+                            if (uvx > 1) uvx = 1;
+                            if (uvy < 0) uvy = 0;
+                            if (uvy > 1) uvy = 1;
+
+                            texture = id_table_fetch(s->textures, srgs_texture_t, obj->texture);
+                            fetch = ((texture->w-1)*uvx + ((texture->h-1)*uvy)*texture->w)*4;                        
+
+                            *((int*)(framebuffer->data+fragment)) = *((int*)(texture->data+fetch));  
+                            break;
+
+
+                          // no color, just depth buffer
+                          case srgs__object_render_mode__depth_only:
+                            break;
+
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+
+srgs__render_error srgs_render(srgs_t * s, uint32_t count, uint32_t * renderListIDs) {
+    uint32_t i;
+    srgs_texture_t * framebuffer = id_table_fetch(s->textures, srgs_texture_t, s->framebufferID);
+    srgs_texture_t * depthbuffer = id_table_fetch(s->textures, srgs_texture_t, s->depthbufferID);
+
+
+    if (framebuffer->w != depthbuffer->w ||
+        framebuffer->h != depthbuffer->h) {
+        return srgs__render_error__framebuffer_mismatch;
+    }
+
+    for(i = 0; i < count; ++i) {
+        srgs_render__renderlist(
+            s, 
+            id_table_fetch(
+                s->renderLists, 
+                srgs_renderlist_t, 
+                renderListIDs[i]
+            ),
+            framebuffer,
+            depthbuffer
+        );
+    }
+    return srgs__render_error__none;
+}
+
+
 
 
 

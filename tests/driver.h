@@ -4,7 +4,7 @@
 #include <stdlib.h>
 
 typedef struct srgs_test_t srgs_test_t;
-
+typedef struct srgs_t srgs_t;
 
 void srgs_test_add(void (*testCase)());
 
@@ -23,5 +23,7 @@ void srgs_test_assert_(int mustBeTrue, const char * file, int line);
 
 void srgs_test_start();
 
+
+void srgs_test_print_framebuffer(srgs_t *);
 
 #endif

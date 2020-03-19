@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include <stdio.h>
-
+#include "../srgs.h"
 
 static uint64_t memoryCount = 0;
 
@@ -152,4 +152,30 @@ void srgs_test_assert_(int expression, const char * file, int line) {
         printf("Test FAILED @ %s:%d\n", file, line);
         exit(1);
     }
+}
+
+
+
+
+
+void srgs_test_print_framebuffer(srgs_t * s) {
+    const uint8_t * data = srgs_texture_get_data(s, srgs_get_framebuffer_texture(s));
+
+    uint32_t w = srgs_texture_get_width(s, srgs_get_framebuffer_texture(s));
+    uint32_t h = srgs_texture_get_height(s, srgs_get_framebuffer_texture(s));
+
+
+    uint32_t x, y;
+    for(y = 0; y < h; ++y) {
+        for(x = 0; x < w; ++x) {
+            
+            printf("%c", *data ? '*' : '.');
+            data+=4;
+        }
+        printf("\n");
+    }
+    printf("\n");
+
+
+
 }

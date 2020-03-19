@@ -142,6 +142,17 @@ typedef enum {
 
 
 
+typedef enum {
+    srgs__render_error__none,
+
+    // THe dimensions of the framebuffer and 
+    // depth buffer do not match
+    srgs__render_error__framebuffer_mismatch,
+
+} srgs__render_error;
+
+
+
 
 
 
@@ -209,7 +220,7 @@ void srgs_clear_color(srgs_t *);
 // Renders all given renderlists. The results are stored within the 
 // framebuffer and the depthbuffer is used for depth processing in 
 // its current state.
-void srgs_render(srgs_t *, uint32_t count, uint32_t * renderListIDs);
+srgs__render_error srgs_render(srgs_t *, uint32_t count, uint32_t * renderListIDs);
 
 
 
@@ -374,12 +385,6 @@ void srgs_object_destroy(srgs_t *, uint32_t id);
 // Sets the vertex count for the object.
 // Once set, defining and updating verices will 
 // assume this is the maximum number of vertices for the object.
-// When rendered, all vertices will be rendered.
-//
-// If there are fewer than 3 vertices leftover at the end of 
-// the buffer, these are referred to as "degenerate vertices".
-// These are ignored in this renderer since triangles 
-// are the only primitive.
 void srgs_object_set_vertex_count(srgs_t *, uint32_t id, uint32_t vertexCount);
 
 // Redefines the vertex buffer in the given channel.
@@ -411,6 +416,25 @@ void srgs_object_update_vertices(
 const float * srgs_object_get_vertices(
     const srgs_t *, 
     int32_t ID
+);
+
+
+// Defines the actual indices of the object
+// These determine which vertices defined are used to render 
+// and in what order. For example,
+// specifying to render indices "2, 3, and 8" will 
+// fetch vertices 2, 3, and 8 in that for when determining 
+// what to render.
+//
+// If there are fewer than 3 vertices leftover at the end of 
+// the buffer, these are referred to as "degenerate vertices".
+// These are ignored in this renderer since triangles 
+// are the only primitive.
+void srgs_object_define_indices(
+    srgs_t *, 
+    uint32_t ID, 
+    uint32_t count, 
+    uint32_t * indices
 );
 
 // Sets the render mode for the object.
@@ -504,10 +528,6 @@ void srgs_renderlist_set_objects(
 
 
 
-
-
-
-#ifdef SRGS__LINEAR_ALGEBRA
 
 
 /* Vector utilities */
@@ -707,8 +727,6 @@ void srgs_utility_matrix_look_at(srgs_matrix_t *,
 );
 
 
-
-#endif
 
 
 
