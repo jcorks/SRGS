@@ -369,7 +369,7 @@ int srgs_object_verify(srgs_t *, uint32_t id);
 uint32_t srgs_object_clone(srgs_t *, uint32_t id);
 
 // Frees an object instance.
-void srgs_object_destroy(srgs_t *, uint32_ id);
+void srgs_object_destroy(srgs_t *, uint32_t id);
 
 // Sets the vertex count for the object.
 // Once set, defining and updating verices will 

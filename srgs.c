@@ -6,7 +6,7 @@
 #include <math.h>
 #include <assert.h>
 
-
+#define SRGS_DEADADDRESSTAG ((void*)0xB00)
 
 // manages IDs in a similar manner to pointers
 typedef struct srgs_id_table_t srgs_id_table;
@@ -43,7 +43,9 @@ static void id_table_destroy(srgs_id_table_t *);
 // returns a new ID
 static uint32_t id_table_new_id(srgs_id_table_t *);
 
-
+// Returns a new array of all IDs that are alive.
+// The returned buffer needs to be freed.
+static uint32_t * id_table_get_alive_ids(srgs_id_table_t *, uint32_t * count);
 
 // __T__ -> table 
 // __TYPE__ -> type 
@@ -220,6 +222,31 @@ uint32_t srgs_get_depthbuffer_texture(const srgs_t * t) {
 }
 
 void srgs_destroy(srgs_t * s) {
+    uint32_t i; 
+    uint32_t count;
+    uint32_t * alive;
+
+
+    alive = id_table_get_alive_ids(s->textures, &count);    
+    for(i = 0; i < count; ++i) {
+        srgs_texture_destroy(s, alive[i]);
+    }
+    s->deloc(alive);
+
+    alive = id_table_get_alive_ids(s->objects, &count);
+    for(i = 0; i < count; ++i) {
+        srgs_object_destroy(s, alive[i]);
+    }
+
+    s->deloc(alive);
+    alive = id_table_get_alive_ids(s->renderLists, &count);
+    for(i = 0; i < count; ++i) {
+        srgs_renderlist_destroy(s, alive[i]);
+    }
+    s->deloc(alive);
+
+
+
     id_table_destroy(s->textures);
     id_table_destroy(s->objects);
     id_table_destroy(s->renderLists);
@@ -251,10 +278,11 @@ int srgs_texture_verify(srgs_t * t, uint32_t id) {
 void srgs_texture_destroy(srgs_t * t, uint32_t id) {
     srgs_texture_t * tex = id_table_fetch(t->textures, srgs_texture_t, id);
     t->deloc(tex->data);
+    tex->data = SRGS_DEADADDRESSTAG;
     id_table_recycle_id(t->textures, id);
 }
 
-void srgs_texture_blank(srgs_t * t, uint32_t id, char white) {
+void srgs_texture_blank(srgs_t * t, uint32_t id, uint8_t white) {
     srgs_texture_t * tex = id_table_fetch(t->textures, srgs_texture_t, id);
     uint32_t i;
     uint32_t count = tex->w * tex->h;
@@ -409,6 +437,7 @@ uint32_t srgs_object_clone(srgs_t * t, uint32_t idIn) {
 void srgs_object_destroy(srgs_t * t, uint32_t id) {
     srgs_object_t * out = id_table_fetch(t->objects, srgs_object_t, id);
     t->deloc(out->verticesInterleaved);
+    out->verticesInterleaved = SRGS_DEADADDRESSTAG;
     id_table_recycle_id(t->objects, id);    
 }
 
@@ -566,6 +595,7 @@ void srgs_renderlist_set_transform(srgs_t * t, uint32_t id, uint32_t matrix) {
 void srgs_renderlist_destroy(srgs_t * t, uint32_t id) {
     srgs_renderlist_t * l = id_table_fetch(t->renderLists, srgs_renderlist_t, id);
     t->deloc(l->objects);
+    l->objects = SRGS_DEADADDRESSTAG;
     id_table_recycle_id(t->renderLists, id);
 }
 
@@ -650,7 +680,28 @@ void id_table_recycle_id(srgs_id_table_t * t, uint32_t id) {
     t->dead[t->sizeDead++] = id;
 }
 
+uint32_t * id_table_get_alive_ids(srgs_id_table_t * t, uint32_t * count) {
+    uint32_t * outpre  = t->ctx->alloc(t->size*sizeof(uint32_t));
+    uint32_t * outreal = t->ctx->alloc(t->size*sizeof(uint32_t));
+    uint32_t i;
 
+    for(i = 0; i < t->size; ++i) {
+        outpre[i] = i*t->sizeofTypeInt;
+    }
+    for(i = 0; i < t->sizeDead; ++i) {
+        outpre[t->dead[i]/t->sizeofTypeInt] = 0xfffffffe;
+    }
+
+    *count = 0;
+    for(i = 0; i < t->size; ++i) {
+        if (outpre[i] != 0xfffffffe)
+            outreal[(*count)++] = outpre[i];
+    }
+
+    t->ctx->deloc(outpre);
+    return outreal;
+
+}
 
 
 
