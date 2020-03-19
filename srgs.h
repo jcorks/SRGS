@@ -4,34 +4,165 @@
 #include <stdint.h>
 #include <string.h>
 
+/*
+                                 SRGS
+                                 ====
+                    Simple Raster Graphics Server
+                    -----------------------------
+                        Johnathan Corkery, 2020
 
 
-typedef struct srgs_t srgs_t;
+    A simple implementation of baseline behavior expected of a 
+    bare-bones graphics context. This is meant to be a 
+    simple starting point / option for low-resolution graphics 
+    in contexts where more advanced libraries tied to hardware 
+    (i.e. OpenGL / DirectX) are not available.
+
+    SRGS is meant to be a single-file implementation of graphics 
+    features that would normally be controlled by dedicated 
+    hardware. This API is designed to support hardware-accelerated
+    implementations, but such a thing is not required.
+
+    As it is, this library is purely a software rasterizer that is 
+    limited to only color and depth information with ONLY triangle
+    primitives. 
+
+    The reason that the term "server" is used is due to the API 
+    organization. Note that no pointers are used outside of the 
+    context pointer and array buffers for bulk data (like 
+    vertex data), so an implementation with deferred processing
+    of graphics requests is easily achievable, with perhaps 
+    the graphics processor being not physically attached to the 
+    calling machine.
 
 
+    General notes:
+    --------------
+    - The origin is the "topleft" at 0, 0
+    - Once delivered to the renderer, coordinates will be 
+      interpreted as homogeneous coordinates. That is,
+      coordiates within [-1, 1] for xyz.
+    - All pixel/texel information is in RGBA format, where each 
+       component is 1 byte.
+    - The depth buffer is 1 byte. This will likely change
+       depending on how performant the implementation will be.
+
+    - Only one primitive is available: triangle.
+
+    - No face culling is implemented. Yet.
+
+    - Linear algebra utilities are available if needed.
+
+
+
+*/
+
+
+
+
+
+// Enumerator for object rendering modes.
+// This controls how triangles are colored.
+// see srgs_object_set_render_mode()
 typedef enum {
+    // Specifies that each triangle should be colored based on 
+    // each vertex color. The vertex color is specified using the 
+    // 4-component color component
+    // This is the default.
     srgs__object_render_mode__color,
+
+    // Specifies that each triangle should be colored based on 
+    // the associated texture. See srgs_object_set_texture()
+    // When active, the object's UVs are used to determine which 
+    // fragments receive which texels.
     srgs__object_render_mode__texture,
-    srgs__object_render_mode__none,
+
+    // Specifies that no coloring will be done of the tringle.
+    // Depth information will still be processed in this case.
     srgs__object_render_mode__depth_only
 } srgs__object_render_mode;
 
+
+
+
+
+
+// Enumerator for controlling depth testing.
+// The depth test is the part of the graphics pipeline that 
+// determines which fragments will be shown on-screen.
+// see srgs_object_set_depth_mode()
 typedef enum {
+    // If a fragement's depth is less (that is, close to the observor)
+    // then the fragments are shown.
     srgs__object_depth_mode__less,
+
+    // If a fragment's depth is less than or equal to the existing 
+    // fragment's depth, then it is shown.
     srgs__object_depth_mode__lessequal,
+
+    // If a fragment's depth is equal to the existing 
+    // fragment's depth, then it is shown.
     srgs__object_depth_mode__equal,
+
+    // If a fragment's depth is greater than the existing 
+    // fragment's depth, then it is shown.
     srgs__object_depth_mode__greater,
+
+    // If a fragment's depth is greater than or equal to the existing 
+    // fragment's depth, then it is shown.
     srgs__object_depth_mode__greaterequal,
+
+    // The fragment always succeeds its depth test. 
     srgs__object_depth_mode__always,
+
+    // The fragment never succeeds. Effectively disables the object.
+    srgs__object_depth_mode__never
 } srgs__object_depth_mode;
 
+
+
+// Enumerator for which channel to work with of an object's
+// vertices. Each vertex contains the following information:
+//      position: x, y, z position
+//      UVs:      u, v texture coordinates
+//      color:    r, g, b, z color components
 typedef enum {
+    // The x, y, z of the vertex.
     srgs__object_vertex_channel__position,
+
+    // The u, v of the vertex.
     srgs__object_vertex_channel__uvs,
+
+    // The r, g, b, a of the vertex.
     srgs__object_vertex_channel__color,
+
 } srgs__object_vertex_channel;
 
 
+
+
+
+
+
+
+// The context for the server.
+// Required for all calls.
+typedef struct srgs_t srgs_t;
+
+
+
+/* 
+    SRGS context API 
+
+    The context for all renderer calls.
+*/
+
+// Creates a new context.
+// startH/W is the starting pixel with and height for the 
+// framebuffer and depthbuffer.
+//
+// If you wish, custom allocator functions may 
+// be specified.
 srgs_t * srgs_create(
     uint32_t startW, uint32_t startH,
 
@@ -47,34 +178,88 @@ srgs_t * srgs_create(
 
 );
 
-// Always defined. Never changes
-uint32_t srgs_get_framebuffer_texture(const srgs_t *);
-
-// Always defined. Never changes
-uint32_t srgs_get_depthbuffer_texture(const srgs_t *);
-
-
-
-
+// Frees the SRGS context.
 void srgs_destroy(srgs_t *);
 
 
+// Returns the texture ID for the framebuffer.
+// Always defined and never changes across the context's lifetime.
+// Can be used as a normal texture.
+uint32_t srgs_get_framebuffer_texture(const srgs_t *);
+
+// Returns the texture ID for the depthbuffer.
+// Always defined and never changes across the context's lifetime.
+// Can be used as a normal texture.
+// For the depth buffer, only the red component is used.
+// This means that the depth buffer bitspace is only one byte.
+uint32_t srgs_get_depthbuffer_texture(const srgs_t *);
+
+
+// Resets the depth buffer. This is an alias for 
+// doing a texture blank with the depth value.
+// For the default "Less" test that objects use, 
+// a depth value of 0xff is recommended.
+void srgs_clear_depth(srgs_t *, uint8_t depthValue);
+
+// Resets the color buffer. This is an alias for 
+// doing a texture blank with all black and 0 for the alpha channel
+void srgs_clear_color(srgs_t *);
+
+
+// Renders all given renderlists. The results are stored within the 
+// framebuffer and the depthbuffer is used for depth processing in 
+// its current state.
+void srgs_render(srgs_t *, uint32_t count, uint32_t * renderListIDs);
 
 
 
-// texture API
 
+
+
+
+/* 
+    SRGS Texture API 
+
+    Textures are matrices of pixels (referred to as texels)
+    that can be used as sources for coloring triangles. This 
+    is the main way to import picture information in a 
+    graphical context.    
+    
+*/
+
+// Creates a new texture within the context.
+// w and h are the height and width in texels 
+// that the texture should start at in size.
+// The ID for the texture is use.
 uint32_t srgs_texture_create(srgs_t *, uint32_t w, uint32_t h);
 
-int srgs_texture_verify(srgs_t *, uint32_t);
+// Returns whether the given ID actually points 
+// to a valid texture. If it is valid, 1 is returned.
+// else 0 is returned.
+// This is appropriate for debugging context, but should not 
+// be relied on too heavily elsewise since it incurs a noteable 
+// runtime cost for no programmatic benefit unless 
+// untrusted sources are at play.
+int srgs_texture_verify(srgs_t *, uint32_t id);
 
-void srgs_texture_destroy(srgs_t *, uint32_t);
+// Destroys and frees all resources associated with the texture
+// handle.
+void srgs_texture_destroy(srgs_t *, uint32_t id);
 
-void srgs_texture_blank(srgs_t *, uint32_t, char white);
+// Resets the texture to a gray state. Each component of the
+// texture will match the given color value.
+void srgs_texture_blank(srgs_t *, uint32_t, uint8_t component);
 
+
+// Updates the texture.
+// Using an RGBA buffer (src), the target texture's data may be 
+// replaced. 
+// x/yDest is the x,y position of the texutre to edit. This is relative 
+// to the origin. x/ySrc is the origin of the incoming texture, and 
+// w/hSrc is the width and height of the incoming texture.
 void srgs_texture_update(
     srgs_t *, 
-    uint32_t,
+    uint32_t ID,
 
     const uint8_t * src, 
     uint32_t xDest, uint32_t yDest, 
@@ -82,19 +267,39 @@ void srgs_texture_update(
     uint32_t wSrc,  uint32_t hSrc
 );
 
-void srgs_texture_resize(srgs_t *, uint32_t, uint32_t, uint32_t);
+// Resizes the texture to the given width and height. The 
+// contents of the texture are undefined after this operation.
+void srgs_texture_resize(srgs_t *, uint32_t id, uint32_t w, uint32_t h);
 
+// Retrieves a pointer to the raw texture data. The texture data is 
+// always in RGBA format where each component is one byte of information.
 const uint8_t * srgs_texture_get_data(const srgs_t *, uint32_t);
 
+// Returns the width of the texture in texels.
 uint32_t srgs_texture_get_width(const srgs_t *, uint32_t);
 
+// Returns the height of the texture in texels.
 uint32_t srgs_texture_get_height(const srgs_t *, uint32_t);
 
 
 
 
-// matrix API
 
+
+
+
+/* 
+    SRGS Matrix API 
+    
+    Matrices define arbitrary transforms.
+    They can be specified for objects and renderlists.
+*/
+
+
+
+// Basic struct for a matrix.
+// Exposed for easy access, but is effectively a 16-component 
+// array of floats.
 typedef struct {
 	  float x0, y0, z0, w0,
 			x1, y1, z1, w1,
@@ -102,71 +307,132 @@ typedef struct {
 			x3, y3, z3, w3;
 } srgs_matrix_t;
 
+
+// Creates a new matrix and returns its ID.
+// Every new matrix is set to the identity matrix.
 uint32_t srgs_matrix_create(srgs_t *);
 
-int srgs_matrix_verify(srgs_t *, uint32_t);
 
-void srgs_matrix_destroy(srgs_t *, uint32_t);
+// Returns whether the given ID actually points 
+// to a valid matrix. If it is valid, 1 is returned.
+// else 0 is returned.
+// This is appropriate for debugging context, but should not 
+// be relied on too heavily elsewise since it incurs a noteable 
+// runtime cost for no programmatic benefit unless 
+// untrusted sources are at play.
+int srgs_matrix_verify(srgs_t *, uint32_t id);
+
+// Frees all data associated with a matrix.
+void srgs_matrix_destroy(srgs_t *, uint32_t id);
+
+
+// Sets the data for a matrix.
+void srgs_matrix_set(srgs_t *, uint32_t id, srgs_matrix_t *);
+
+// Gets the raw data for a matrix.
+const srgs_matrix_t * srgs_matrix_get(const srgs_t *, uint32_t id);
 
 
 
-void srgs_matrix_set(srgs_t *, uint32_t, srgs_matrix_t *);
-
-const srgs_matrix_t * srgs_matrix_get(const srgs_t *, uint32_t);
 
 
 
 
-// object API
+
+
+
+/* 
+    SRGS Object API 
+
+    An object is the atomic unit by which rendering takes place.
+    Each object is a collection of vertices expressed with exactly 
+    one texture and one transform.
+
+    If the channel is position: the float buffer is x, y, z per vertex.
+    If the channel is uvs: the float buffer is u, v per vertex.
+    If the channel is position: the float buffer is r, g, b, a per vertex.
+    
+*/
 
 uint32_t srgs_object_create(srgs_t *);
 
-int srgs_object_verify(srgs_t *, uint32_t);
+// Returns whether the given ID actually points 
+// to a valid object. If it is valid, 1 is returned.
+// else 0 is returned.
+// This is appropriate for debugging context, but should not 
+// be relied on too heavily elsewise since it incurs a noteable 
+// runtime cost for no programmatic benefit unless 
+// untrusted sources are at play.
+int srgs_object_verify(srgs_t *, uint32_t id);
 
-uint32_t srgs_object_clone(srgs_t *, uint32_t);
+// Creates a new object as a clone of an existing one.
+uint32_t srgs_object_clone(srgs_t *, uint32_t id);
 
-void srgs_object_destroy(srgs_t *, uint32_t);
+// Frees an object instance.
+void srgs_object_destroy(srgs_t *, uint32_ id);
 
-void srgs_object_set_vertex_count(srgs_t *, uint32_t, uint32_t);
+// Sets the vertex count for the object.
+// Once set, defining and updating verices will 
+// assume this is the maximum number of vertices for the object.
+// When rendered, all vertices will be rendered.
+//
+// If there are fewer than 3 vertices leftover at the end of 
+// the buffer, these are referred to as "degenerate vertices".
+// These are ignored in this renderer since triangles 
+// are the only primitive.
+void srgs_object_set_vertex_count(srgs_t *, uint32_t id, uint32_t vertexCount);
 
-// assumes the incoming buffer matches in size tot he actual buffer
+// Redefines the vertex buffer in the given channel.
+// Assumes the incoming buffer matches in size to the actual buffer.
 void srgs_object_define_vertices(
     srgs_t *, 
-    uint32_t, 
+    uint32_t ID, 
     srgs__object_vertex_channel, 
     float *
 );
 
+// Updates the given object's vertex buffer channel
 void srgs_object_update_vertices(
     srgs_t *, 
-    uint32_t, 
+    uint32_t ID, 
     srgs__object_vertex_channel, 
     uint32_t fromVertexIndex, 
     uint32_t toVertexIndex, 
     float * src
 );
 
+// Retrieves the full vertex buffer for the 
+// object. The buffer is in interleaved format for all 
+// the given channels. Each vertex is organized in 
+// the following format:
+//
+//  x,y,z     u,v,     r,g,b,a
+// 
 const float * srgs_object_get_vertices(
     const srgs_t *, 
-    int32_t,    
-    srgs__object_vertex_channel
+    int32_t ID
 );
 
+// Sets the render mode for the object.
+// See srgs__object_render_mode
+void srgs_object_set_render_mode(srgs_t *, uint32_t ID, srgs__object_render_mode);
 
-void srgs_object_set_render_mode(srgs_t *, uint32_t, srgs__object_render_mode);
+// Sets the depth mode/test for the object.
+// See srgs__object_depth_mode
+void srgs_object_set_depth_mode(srgs_t *, uint32_t ID, srgs__object_depth_mode);
 
-void srgs_object_set_depth_mode(srgs_t *, uint32_t, srgs__object_depth_mode);
+// Sets the texture to be used with the object.
+void srgs_object_set_texture(srgs_t *, uint32_t ID, uint32_t);
+
+// Sets the transform matrix to be used with this object.
+void srgs_object_set_transform(srgs_t *, uint32_t ID, uint32_t);
 
 
-void srgs_object_set_texture(srgs_t *, uint32_t, uint32_t);
-
-void srgs_object_set_transform(srgs_t *, uint32_t, uint32_t);
-
-
+// Retrieves parameters for the object.
 // any unneeded attribute can be set NULL and is ignored.
 void srgs_object_get_parameters(
     const srgs_t *,
-    uint32_t,
+    uint32_t ID,
     
     srgs__object_render_mode *,
     srgs__object_depth_mode *,
@@ -180,17 +446,36 @@ void srgs_object_get_parameters(
 
 
 
+/*
+    SRGS Renderlist API
 
+
+    Renderlists are groupings of Objects 
+    and can be given an overlying transform.
+
+*/ 
 
 
 uint32_t srgs_renderlist_create(srgs_t *);
 
+// Returns whether the given ID actually points 
+// to a valid renderlist. If it is valid, 1 is returned.
+// else 0 is returned.
+// This is appropriate for debugging context, but should not 
+// be relied on too heavily elsewise since it incurs a noteable 
+// runtime cost for no programmatic benefit unless 
+// untrusted sources are at play.
 int srgs_renderlist_verify(srgs_t *, uint32_t);
 
+
+// Destroys and frees a renderlist instance.
 void srgs_renderlist_destroy(srgs_t *, uint32_t);
 
+// Sets the transform for objects that it renders.
+// This transform is set after the transforms per object.
 void srgs_renderlist_set_transform(srgs_t *, uint32_t, uint32_t);
 
+// Sets the objects that this renderlist contains.
 void srgs_renderlist_set_objects(
     srgs_t *, 
     uint32_t list, 
@@ -198,9 +483,6 @@ void srgs_renderlist_set_objects(
     uint32_t * objectIDs
 );
 
-
-
-void srgs_render(srgs_t *, uint32_t count, uint32_t * renderListIDs);
 
 
 
