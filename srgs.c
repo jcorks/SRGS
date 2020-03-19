@@ -259,6 +259,22 @@ void srgs_destroy(srgs_t * s) {
 
 
 
+void srgs_clear_depth(srgs_t * s) {
+    srgs_texture_blank(s, s->depthbufferID, 0xff);
+}
+
+void srgs_clear_color(srgs_t * s) {
+    srgs_texture_blank(s, s->framebufferID, 0x00);
+}
+
+
+void srgs_render(srgs_t * s, uint32_t count, uint32_t * renderListIDs) {
+    // *Renders ur vertices* OwO
+    
+}
+
+
+
 
 uint32_t srgs_texture_create(srgs_t * t, uint32_t w, uint32_t h) {
     uint32_t id = id_table_new_id(t->textures);
@@ -580,6 +596,7 @@ uint32_t srgs_renderlist_create(srgs_t * t) {
     out->size = 0;
     out->matrixID = 0;
     out->objects = NULL;  
+    return id;
 }
 
 
@@ -603,7 +620,7 @@ void srgs_renderlist_destroy(srgs_t * t, uint32_t id) {
 void srgs_renderlist_set_objects(srgs_t * t, uint32_t id, uint32_t count, uint32_t * renderListIDs) {
     srgs_renderlist_t * l = id_table_fetch(t->renderLists, srgs_renderlist_t, id);
     t->deloc(l->objects);
-    l->objects = t->alloc(count);
+    l->objects = t->alloc(count*sizeof(uint32_t));
     l->size = count;
     srgs_memcpy_int(t->alloc, renderListIDs, count*sizeof(uint32_t));
 }

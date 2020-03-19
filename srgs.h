@@ -196,10 +196,10 @@ uint32_t srgs_get_depthbuffer_texture(const srgs_t *);
 
 
 // Resets the depth buffer. This is an alias for 
-// doing a texture blank with the depth value.
-// For the default "Less" test that objects use, 
-// a depth value of 0xff is recommended.
-void srgs_clear_depth(srgs_t *, uint8_t depthValue);
+// doing a texture blank with the value 0xff.
+// For the default (and standard) "Less" test that objects use, 
+// this is recommended.
+void srgs_clear_depth(srgs_t *);
 
 // Resets the color buffer. This is an alias for 
 // doing a texture blank with all black and 0 for the alpha channel
