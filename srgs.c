@@ -115,7 +115,8 @@ typedef struct {
 
 typedef struct {
     uint32_t size;
-    uint32_t matrixID;
+    uint32_t viewID;
+    uint32_t projID;
     uint32_t * objects;
    
 } srgs_renderlist_t;
@@ -637,7 +638,8 @@ uint32_t srgs_renderlist_create(srgs_t * t) {
     uint32_t id = id_table_new_id(t->renderLists);
     srgs_renderlist_t * out = id_table_fetch(t->renderLists, srgs_renderlist_t, id);
     out->size = 0;
-    out->matrixID = 0;
+    out->projID = 0;
+    out->viewID = 0;
     out->objects = NULL;  
     return id;
 }
@@ -647,10 +649,16 @@ int srgs_renderlist_verify(srgs_t * t, uint32_t id) {
     return id_table_verify(t->renderLists, id);
 }
 
-void srgs_renderlist_set_transform(srgs_t * t, uint32_t id, uint32_t matrix) {
+void srgs_renderlist_set_projection_transform(srgs_t * t, uint32_t id, uint32_t matrix) {
     srgs_renderlist_t * l = id_table_fetch(t->renderLists, srgs_renderlist_t, id);
-    l->matrixID = matrix;    
+    l->projID = matrix;    
 }
+
+void srgs_renderlist_set_view_transform(srgs_t * t, uint32_t id, uint32_t matrix) {
+    srgs_renderlist_t * l = id_table_fetch(t->renderLists, srgs_renderlist_t, id);
+    l->viewID = matrix;    
+}
+
 
 void srgs_renderlist_destroy(srgs_t * t, uint32_t id) {
     srgs_renderlist_t * l = id_table_fetch(t->renderLists, srgs_renderlist_t, id);
@@ -1459,13 +1467,13 @@ srgs_vector3_t srgs_utility_matrix_transform(const srgs_matrix_t * m, const srgs
 static void srgs_utility_matrix_transform_inplace(const srgs_matrix_t * m, srgs_vector3_t * v) {
 	const float * matr = (float *) m;
 
-	float f0 = matr[0]*v->x + matr[1]*v->y + matr[2]*v->z + matr[3];
-	float f1 = matr[4]*v->x + matr[5]*v->y + matr[6]*v->z + matr[7];
-	float f2 = matr[8]*v->x + matr[9]*v->y + matr[10]*v->z + matr[11];
-
-    v->x = f0;
-    v->y = f1;
-    v->z = f2;
+	float f0 = matr[0] *v->x + matr[1] *v->y + matr[2]*v->z  + matr[3];
+	float f1 = matr[4] *v->x + matr[5] *v->y + matr[6]*v->z  + matr[7];
+	float f2 = matr[8] *v->x + matr[9] *v->y + matr[10]*v->z + matr[11];
+    float f3 = matr[12]*v->x + matr[13]*v->y + matr[14]*v->z + matr[15];
+    v->x = f0 / f3;
+    v->y = f1 / f3;
+    v->z = f2 / f3;
     
 }
 
@@ -1503,32 +1511,32 @@ static volatile float max3(float x, float y, float z) {
 
 
 
-static int depth_l(int current, int in) {
+static int depth_l(uint32_t current, uint32_t in) {
     return in < current;
 }
 
-static int depth_lte(int current, int in) {
+static int depth_lte(uint32_t current, uint32_t in) {
     return in <= current;
 }
 
-static int depth_eq(int current, int in) {
+static int depth_eq(uint32_t current, uint32_t in) {
     return in == current;
 }
 
-static int depth_gt(int current, int in) {
+static int depth_gt(uint32_t current, uint32_t in) {
     return in > current;
 }
 
-static int depth_gte(int current, int in) {
+static int depth_gte(uint32_t current, uint32_t in) {
     return in >= current;
 }
 
 
-static int depth_always(int current, int in) {
+static int depth_always(uint32_t current, uint32_t in) {
     return 1;
 }
 
-static int depth_never(int current, int in) {
+static int depth_never(uint32_t current, uint32_t in) {
     return 0;
 }
 
@@ -1550,7 +1558,10 @@ static void srgs_render__renderlist(
     // "identity matrix", so calculation is skipped if its 
     // set to zero.
     srgs_matrix_t * objTF = NULL;
-    srgs_matrix_t * listTF = NULL;;
+    srgs_matrix_t * viewTF = NULL;
+    srgs_matrix_t * projTF = NULL;
+    srgs_matrix_t tf, tf2;
+
 
     // triangles to transform and rasterize
     uint32_t triCount, fetch;    
@@ -1596,10 +1607,10 @@ static void srgs_render__renderlist(
 
     
     
-    uint8_t fragDepth[4];
+    uint32_t fragDepth, *fragP;
 
 
-    int (*depthTest)(int, int);
+    int (*depthTest)(uint32_t, uint32_t);
 
 
 
@@ -1610,14 +1621,13 @@ static void srgs_render__renderlist(
 
     
 
-    if (list->matrixID)
-        listTF = id_table_fetch(s->matrices, srgs_matrix_t, list->matrixID);
+    projTF = id_table_fetch(s->matrices, srgs_matrix_t, list->projID);
+    viewTF = id_table_fetch(s->matrices, srgs_matrix_t, list->viewID);
     
 
 
     for(i = 0; i < list->size; ++i) {
         obj = id_table_fetch(s->objects, srgs_object_t, list->objects[i]);
-        objTF = NULL;
         // choose depth test
 
         switch(obj->depthMode) {
@@ -1636,9 +1646,9 @@ static void srgs_render__renderlist(
         if (depthTest == depth_never) continue;
         
 
-        if (obj->matrixID) {
+        //if (obj->matrixID) {
             objTF = id_table_fetch(s->matrices, srgs_matrix_t, obj->matrixID);
-        }
+        //}
 
 
         triCount = obj->indexCount/3;
@@ -1649,25 +1659,14 @@ static void srgs_render__renderlist(
             pos[2] = *((srgs_vector3_t*)(obj->verticesInterleaved+SRGS__FLOATS_PER_VERTEX*obj->indices[n*3+2]));
 
 
+            /// TODO make efficient
+            srgs_utility_matrix_multiply(&tf,  projTF, viewTF);
+            srgs_utility_matrix_multiply(&tf2, &tf, objTF);
+            //tf2 = tf;
 
-
-
-            // first transform vertices based on object.
-            if (objTF) {
-                srgs_utility_matrix_transform_inplace(objTF, pos);
-                srgs_utility_matrix_transform_inplace(objTF, pos+1);
-                srgs_utility_matrix_transform_inplace(objTF, pos+2);
-            }    
-
-
-            // then transform based on list
-            if (listTF) {
-                srgs_utility_matrix_transform_inplace(listTF, pos);
-                srgs_utility_matrix_transform_inplace(listTF, pos+1);
-                srgs_utility_matrix_transform_inplace(listTF, pos+2);
-            }    
-
-
+            srgs_utility_matrix_transform_inplace(&tf2, pos);
+            srgs_utility_matrix_transform_inplace(&tf2, pos+1);
+            srgs_utility_matrix_transform_inplace(&tf2, pos+2);
 
 
             // prepare barycentric transform.
@@ -1741,12 +1740,13 @@ static void srgs_render__renderlist(
                     // near/far clipping
                     if (convz < -1.f || convz > 1.0) continue;
 
-                    fragDepth[0] = ((convz + 1.f)/2.f) * 0xff;
+                    fragDepth = ((convz + 1.f)/2.f) * 0xffffffff;
                     uint32_t fragment = (x + y*depthbuffer->w)*4;
-                    if (depthTest(depthbuffer->data[fragment], fragDepth[0])) {
+                    fragP = (uint32_t*)(depthbuffer->data+fragment);
+                    if (depthTest(*fragP, fragDepth)) {
 
                         // update depth buffer (1st byte only)
-                        depthbuffer->data[fragment] = fragDepth[0];
+                        *fragP = fragDepth;
 
 
 

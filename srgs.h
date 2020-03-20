@@ -44,9 +44,7 @@
       coordiates within [-1, 1] for xyz.
     - All pixel/texel information is in RGBA format, where each 
        component is 1 byte.
-    - The depth buffer is 1 byte. This will likely change
-       depending on how performant the implementation will be.
-
+    - The depth buffer is 4 bytes.
     - Only one primitive is available: triangle.
 
     - No face culling is implemented. Yet.
@@ -495,9 +493,20 @@ int srgs_renderlist_verify(srgs_t *, uint32_t);
 // Destroys and frees a renderlist instance.
 void srgs_renderlist_destroy(srgs_t *, uint32_t);
 
-// Sets the transform for objects that it renders.
-// This transform is set after the transforms per object.
-void srgs_renderlist_set_transform(srgs_t *, uint32_t, uint32_t);
+// Sets the viewing transform for objects that it renders.
+// The transforms are applied in this order:
+//
+// projectionTransform * viewTransform * objectTransform;
+//
+void srgs_renderlist_set_view_transform(srgs_t *, uint32_t, uint32_t);
+
+// Sets the projection transform for objects that it renders.
+// The transforms are applied in this order:
+//
+// projectionTransform * viewTransform * objectTransform;
+//
+void srgs_renderlist_set_projection_transform(srgs_t *, uint32_t, uint32_t);
+
 
 // Sets the objects that this renderlist contains.
 void srgs_renderlist_set_objects(

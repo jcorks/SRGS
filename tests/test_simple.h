@@ -8,7 +8,7 @@ void test_simple() {
     printf("Starting: simple test\n\n");
 
     srgs_t * context = srgs_create(
-        86, 64,
+        64, 64,
         srgs_test_alloc,
         srgs_test_dealloc,
         srgs_test_realloc     
@@ -19,7 +19,7 @@ void test_simple() {
     uint32_t object = srgs_object_create(context);
     srgs_test_assert(srgs_object_verify(context, object));
     srgs_object_set_vertex_count(context, object, 4*6);
-    srgs_object_set_render_mode(context, object, srgs__object_render_mode__texture);
+    srgs_object_set_render_mode(context, object, srgs__object_render_mode__color);
 
     float position[] = {
         -.5f,  .5f, .5f,
@@ -142,7 +142,7 @@ void test_simple() {
          .6f, 0, 0, 1.f,
          .6f, 0, 0, 1.f,
          .6f, 0, 0, 1.f,
-
+            
     };
 
 
@@ -231,39 +231,37 @@ void test_simple() {
 
     
     uint32_t perspectiveID = srgs_matrix_create(context);
+    uint32_t viewID = srgs_matrix_create(context);
+
     srgs_matrix_t persp = *srgs_utility_matrix_get_identity();
     srgs_matrix_t camera = *srgs_utility_matrix_get_identity();
-    srgs_utility_matrix_translate(&camera, .1, .1, -1.5);
-    srgs_utility_matrix_projection_perspective(&persp, 45, .6, 0.001, 20.0);
-    srgs_matrix_t result;
-    srgs_utility_matrix_multiply(&result, &persp,  &camera);
+
+    srgs_utility_matrix_translate(&camera, 0, 0, -7);
+    srgs_utility_matrix_projection_perspective(&persp, 90, .7, 0.001, 4.0);
 
 
-    srgs_matrix_set(context, perspectiveID, &result);
+    srgs_matrix_set(context, viewID, &camera);
+    srgs_matrix_set(context, perspectiveID, &persp);
     
 
 
 
     uint32_t list = srgs_renderlist_create(context);
     srgs_renderlist_set_objects(context, list, 1, &object);
-    srgs_renderlist_set_transform(context, list, perspectiveID);
+    srgs_renderlist_set_projection_transform(context, list, perspectiveID);
+    srgs_renderlist_set_view_transform(context, list, viewID);
 
     int iframe = 0;
     while(1) {
-
-        srgs_utility_matrix_rotate(&matrixData, sin(iframe/30.0)*2+1.2, 1, 0, 0);
-        srgs_utility_matrix_rotate(&matrixData, sin(iframe/30.0)*1+1.2, 0, 1, 0);
-        srgs_utility_matrix_rotate(&matrixData, sin(iframe/30.0)*.3+1.49, 0, 0, 1);
+        srgs_utility_matrix_rotate(&matrixData, .1, 1, 0, 0);
+        srgs_utility_matrix_rotate(&matrixData, .1, 0, 1, 0);
+        srgs_utility_matrix_rotate(&matrixData, .08, 0, 0, 1);
         
         { // temp
             iframe++;
             srgs_matrix_t persp = *srgs_utility_matrix_get_identity();
-            srgs_matrix_t camera = *srgs_utility_matrix_get_identity();
-            //srgs_utility_matrix_translate(&camera, .1, .1, sin(iframe/60.f));
-            srgs_utility_matrix_projection_perspective(&persp, 90, .46, 0.0001, 10);
-            srgs_matrix_t result;
-            srgs_utility_matrix_multiply(&result,  &persp, &camera);
-                srgs_matrix_set(context, perspectiveID, &result);
+            srgs_utility_matrix_translate(&persp, .1, .1, sin(iframe/60.f)*1-2);
+            srgs_matrix_set(context, viewID, &persp);
         }
         
 
