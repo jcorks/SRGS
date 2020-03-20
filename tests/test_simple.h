@@ -3,33 +3,23 @@
 
 #include <stdio.h>
 #include <unistd.h>
+#include <math.h>
 void test_simple() {
     printf("Starting: simple test\n\n");
 
     srgs_t * context = srgs_create(
-        32, 32,
+        64, 64,
         srgs_test_alloc,
         srgs_test_dealloc,
         srgs_test_realloc     
     );
 
 
-    uint32_t id = srgs_texture_create(context, 20, 20);
-    srgs_texture_blank(context, id, 0xaa);
-    srgs_test_assert(srgs_texture_verify(context, id));
-
-
-
-    srgs_texture_resize(context, id, 64, 32);
-    srgs_test_assert(srgs_texture_get_width(context, id) == 64);
-    srgs_test_assert(srgs_texture_get_height(context, id) == 32);
-
 
     uint32_t object = srgs_object_create(context);
     srgs_test_assert(srgs_object_verify(context, object));
     srgs_object_set_vertex_count(context, object, 4*6);
-    srgs_object_set_texture(context, object, id);
-    srgs_object_set_render_mode(context, object, srgs__object_render_mode__color);
+    srgs_object_set_render_mode(context, object, srgs__object_render_mode__texture);
 
     float position[] = {
         -.5f,  .5f, .5f,
@@ -46,25 +36,58 @@ void test_simple() {
 
         -.5f,  .5f, .5f,
          .5f,  .5f, .5f,
-         .5f, -.5f, .5f, 
+         .5f, -.5f, .5f,
         -.5f, -.5f, .5f,
 
         -.5f,  .5f,-.5f,
          .5f,  .5f,-.5f,
          .5f, -.5f,-.5f, 
         -.5f, -.5f,-.5f,
-
 
 
         -.5f,  .5f, .5f,
          .5f,  .5f, .5f,
-         .5f, -.5f, .5f, 
+         .5f, -.5f, .5f,
         -.5f, -.5f, .5f,
 
         -.5f,  .5f,-.5f,
          .5f,  .5f,-.5f,
          .5f, -.5f,-.5f, 
         -.5f, -.5f,-.5f,
+
+    };
+    float uvs[] = {
+        0.f, 1.f,
+        1.f, 1.f,
+        1.f, 0.f,
+        0.f, 0.f,
+
+
+        0.f, 1.f,
+        1.f, 1.f,
+        1.f, 0.f,
+        0.f, 0.f,
+
+        0.f, 1.f,
+        1.f, 1.f,
+        1.f, 0.f,
+        0.f, 0.f,
+
+        0.f, 1.f,
+        1.f, 1.f,
+        1.f, 0.f,
+        0.f, 0.f,
+
+        0.f, 1.f,
+        1.f, 1.f,
+        1.f, 0.f,
+        0.f, 0.f,
+
+        0.f, 1.f,
+        1.f, 1.f,
+        1.f, 0.f,
+        0.f, 0.f,
+
 
     };
 
@@ -123,12 +146,22 @@ void test_simple() {
     };
 
 
+    
+ 
+
 
     srgs_object_define_vertices(
         context,
         object,
         srgs__object_vertex_channel__position,
         position
+    );
+
+    srgs_object_define_vertices(
+        context,
+        object,
+        srgs__object_vertex_channel__uvs,
+        uvs
     );
 
 
@@ -194,14 +227,46 @@ void test_simple() {
     srgs_object_set_transform(context, object, matrixID);
     srgs_matrix_t matrixData = *srgs_utility_matrix_get_identity();
 
+
+
+    /*
+    uint32_t perspectiveID = srgs_matrix_create(context);
+    srgs_matrix_t persp = *srgs_utility_matrix_get_identity();
+    srgs_matrix_t camera = *srgs_utility_matrix_get_identity();
+    srgs_utility_matrix_translate(&camera, .1, .1, -1.5);
+    srgs_utility_matrix_projection_perspective(&persp, 45, .6, 0.001, 20.0);
+    srgs_matrix_t result;
+    srgs_utility_matrix_multiply(&result, &persp,  &camera);
+
+
+    srgs_matrix_set(context, perspectiveID, &result);
+    */
+
+
+
     uint32_t list = srgs_renderlist_create(context);
     srgs_renderlist_set_objects(context, list, 1, &object);
+    //srgs_renderlist_set_transform(context, list, perspectiveID);
 
+    int iframe = 0;
     while(1) {
 
         srgs_utility_matrix_rotate(&matrixData, 1, 1, 0, 0);
         srgs_utility_matrix_rotate(&matrixData, .2, 0, 1, 0);
         srgs_utility_matrix_rotate(&matrixData, .49, 0, 0, 1);
+        /*
+        { // temp
+            iframe++;
+            srgs_matrix_t persp = *srgs_utility_matrix_get_identity();
+            srgs_matrix_t camera = *srgs_utility_matrix_get_identity();
+            //srgs_utility_matrix_translate(&camera, .1, .1, sin(iframe/60.0)*4-4);
+            //srgs_utility_matrix_projection_perspective(&persp, 45, 1, 0.001, 3);
+            srgs_matrix_t result;
+            srgs_utility_matrix_multiply(&result, &camera, &persp);
+                srgs_matrix_set(context, perspectiveID, &result);
+        }
+        */
+
 
         srgs_matrix_set(context, matrixID, &matrixData);
 
@@ -211,13 +276,13 @@ void test_simple() {
 
         printf("\033[H\033[J");
         srgs_test_print_framebuffer(context);
+        printf("z@%f\n", sin(iframe/60.0));
         fflush(stdout);
-        usleep(1000*15);
+        usleep(1000*16.6);
     }
 
 
     srgs_texture_destroy(context, object);
-    srgs_texture_destroy(context, id);
     srgs_destroy(context);
 }
 

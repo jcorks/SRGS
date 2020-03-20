@@ -315,17 +315,18 @@ void srgs_texture_update(
 ) {
     srgs_texture_t * tex = id_table_fetch(t->textures, srgs_texture_t, id);
     
-          uint32_t * to   = ((      uint32_t*)tex->data)+(xDest + tex->w*yDest);
-    const uint32_t * from = ((const uint32_t*)src      )+(xSrc  + wSrc  *ySrc );
+          uint32_t * to;
+    const uint32_t * from;
 
     uint32_t y;
 
 
     for(y = 0; y <= hSrc; ++y) {
-        srgs_memcpy_int(to, from, wSrc);
-        
         to    = ((      uint32_t*)tex->data)+(xDest + tex->w*(yDest+y));
         from  = ((const uint32_t*)src      )+(xSrc  + wSrc  *(ySrc +y));
+        srgs_memcpy_int(to, from, wSrc);
+        
+
     }
 }
 
@@ -1590,7 +1591,8 @@ static void srgs_render__renderlist(
         boundYmin,
         boundYmax,
         x, y,
-        framebufferW, framebufferH;
+        framebufferW, framebufferH,
+        fetchx, fetchy;
 
     
     
@@ -1770,7 +1772,7 @@ static void srgs_render__renderlist(
                             uv2 = ((float*)obj->verticesInterleaved+SRGS__FLOATS_PER_VERTEX*obj->indices[n*3+2])+3;
 
                             uvx = bias0*uv0[0] + bias1*uv1[0] + bias2*uv2[0];
-                            uvy = bias0*uv0[0] + bias1*uv1[0] + bias2*uv2[0];
+                            uvy = bias0*uv0[1] + bias1*uv1[1] + bias2*uv2[1];
     
                             if (uvx < 0) uvx = 0;
                             if (uvx > 1) uvx = 1;
@@ -1778,7 +1780,9 @@ static void srgs_render__renderlist(
                             if (uvy > 1) uvy = 1;
 
                             texture = id_table_fetch(s->textures, srgs_texture_t, obj->texture);
-                            fetch = ((texture->w-1)*uvx + ((texture->h-1)*uvy)*texture->w)*4;                        
+                            fetchx = round((texture->w-1)*uvx);
+                            fetchy = round((texture->h-1)*uvy);
+                            fetch = (fetchx + fetchy*texture->w)*4;                        
 
                             *((int*)(framebuffer->data+fragment)) = *((int*)(texture->data+fetch));  
                             break;
