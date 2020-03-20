@@ -372,7 +372,9 @@ static float identityMatrix[16] = {
 uint32_t srgs_matrix_create(srgs_t * t) {
     uint32_t id = id_table_new_id(t->matrices);
     srgs_memcpy_float(id_table_fetch(t->matrices, srgs_matrix_t, id), identityMatrix, 16);    
+    return id;
 }
+
 
 int srgs_matrix_verify(srgs_t * t, uint32_t id) {
     return id_table_verify(t->matrices, id);
@@ -1587,7 +1589,8 @@ static void srgs_render__renderlist(
         boundXmax,
         boundYmin,
         boundYmax,
-        x, y;
+        x, y,
+        framebufferW, framebufferH;
 
     
     
@@ -1599,7 +1602,8 @@ static void srgs_render__renderlist(
 
 
 
-
+    framebufferW = framebuffer->w;
+    framebufferH = framebuffer->h;
 
 
     
@@ -1638,9 +1642,9 @@ static void srgs_render__renderlist(
         triCount = obj->indexCount/3;
         for(n = 0; n < triCount; ++n) {
 
-            pos[0] = *((srgs_vector3_t*)(obj->verticesInterleaved+obj->indices[n*3+0]));
-            pos[1] = *((srgs_vector3_t*)(obj->verticesInterleaved+obj->indices[n*3+1]));
-            pos[2] = *((srgs_vector3_t*)(obj->verticesInterleaved+obj->indices[n*3+2]));
+            pos[0] = *((srgs_vector3_t*)(obj->verticesInterleaved+SRGS__FLOATS_PER_VERTEX*obj->indices[n*3+0]));
+            pos[1] = *((srgs_vector3_t*)(obj->verticesInterleaved+SRGS__FLOATS_PER_VERTEX*obj->indices[n*3+1]));
+            pos[2] = *((srgs_vector3_t*)(obj->verticesInterleaved+SRGS__FLOATS_PER_VERTEX*obj->indices[n*3+2]));
 
 
 
@@ -1666,22 +1670,22 @@ static void srgs_render__renderlist(
 
             // prepare barycentric transform.
             // this determines which fragments are within the object.
-            barycentricCartVx[0] = (pos[0].x+1)/2.f;
-            barycentricCartVy[0] = (pos[0].y+1)/2.f;
+            barycentricCartVx[0] = framebufferW*(pos[0].x+1)/2.f;
+            barycentricCartVy[0] = framebufferH*(pos[0].y+1)/2.f;
 
-            barycentricCartVx[1] = (pos[1].x+1)/2.f;
-            barycentricCartVy[1] = (pos[1].y+1)/2.f;
+            barycentricCartVx[1] = framebufferW*(pos[1].x+1)/2.f;
+            barycentricCartVy[1] = framebufferH*(pos[1].y+1)/2.f;
 
-            barycentricCartVx[2] = (pos[2].x+1)/2.f;
-            barycentricCartVy[2] = (pos[2].y+1)/2.f;
+            barycentricCartVx[2] = framebufferW*(pos[2].x+1)/2.f;
+            barycentricCartVy[2] = framebufferH*(pos[2].y+1)/2.f;
 
 
             barycentricTF[0] = (barycentricCartVx[0] - barycentricCartVx[2]);
             barycentricTF[1] = (barycentricCartVx[1] - barycentricCartVx[2]);
-            barycentricTF[2] = (barycentricCartVx[0] - barycentricCartVx[2]);
-            barycentricTF[3] = (barycentricCartVx[1] - barycentricCartVx[2]);
+            barycentricTF[2] = (barycentricCartVy[0] - barycentricCartVy[2]);
+            barycentricTF[3] = (barycentricCartVy[1] - barycentricCartVy[2]);
 
-            barycentricDet = 1/(barycentricTF[0]*barycentricTF[1] -
+            barycentricDet = 1/(barycentricTF[0]*barycentricTF[3] -
                                 barycentricTF[1]*barycentricTF[2]);
 
             barycentricInv[0] = barycentricTF[3] * barycentricDet;
@@ -1695,16 +1699,16 @@ static void srgs_render__renderlist(
 
             // upper and lower bounds to restrict which fragments to test
             // most optimization should go here
-            boundXmin = framebuffer->w * (min3(pos[0].x, pos[1].x, pos[2].x)+1)/2.f;
-            boundYmin = framebuffer->h * (min3(pos[0].y, pos[1].y, pos[2].y)+1)/2.f;
-            boundXmax = framebuffer->w * (max3(pos[0].x, pos[1].x, pos[2].x)+1)/2.f;
-            boundYmax = framebuffer->h * (max3(pos[0].y, pos[1].y, pos[2].y)+1)/2.f;
+            boundXmin = framebufferW * (min3(pos[0].x, pos[1].x, pos[2].x)+1)/2.f;
+            boundYmin = framebufferH * (min3(pos[0].y, pos[1].y, pos[2].y)+1)/2.f;
+            boundXmax = framebufferW * (max3(pos[0].x, pos[1].x, pos[2].x)+1)/2.f;
+            boundYmax = framebufferH * (max3(pos[0].y, pos[1].y, pos[2].y)+1)/2.f;
 
 
             if (boundXmin < 0) boundXmin = 0;
-            if (boundXmax >= framebuffer->w) boundXmax = framebuffer->w-1;
+            if (boundXmax >= framebufferW) boundXmax = framebufferW-1;
             if (boundYmin < 0) boundYmin = 0;
-            if (boundYmax >= framebuffer->h) boundYmax = framebuffer->h-1;
+            if (boundYmax >= framebufferH) boundYmax = framebufferH-1;
 
 
             for(y = boundYmin; y <= boundYmax; ++y) {
@@ -1749,21 +1753,21 @@ static void srgs_render__renderlist(
 
                           // replace with incoming color
                           case srgs__object_render_mode__color:
-                            color0 = ((float*)obj->verticesInterleaved+obj->indices[n*3+0])+5;
-                            color1 = ((float*)obj->verticesInterleaved+obj->indices[n*3+1])+5;
-                            color2 = ((float*)obj->verticesInterleaved+obj->indices[n*3+2])+5;
+                            color0 = ((float*)obj->verticesInterleaved+SRGS__FLOATS_PER_VERTEX*obj->indices[n*3+0])+5;
+                            color1 = ((float*)obj->verticesInterleaved+SRGS__FLOATS_PER_VERTEX*obj->indices[n*3+1])+5;
+                            color2 = ((float*)obj->verticesInterleaved+SRGS__FLOATS_PER_VERTEX*obj->indices[n*3+2])+5;
 
-                            framebuffer->data[fragment  ] = bias0*color0[0] + bias1*color1[0] + bias2*color2[0];
-                            framebuffer->data[fragment+1] = bias0*color0[1] + bias1*color1[1] + bias2*color2[1];
-                            framebuffer->data[fragment+2] = bias0*color0[2] + bias1*color1[2] + bias2*color2[2];
-                            framebuffer->data[fragment+3] = bias0*color0[3] + bias1*color1[3] + bias2*color2[3];
+                            framebuffer->data[fragment  ] = (bias0*color0[0] + bias1*color1[0] + bias2*color2[0])*0xff;
+                            framebuffer->data[fragment+1] = (bias0*color0[1] + bias1*color1[1] + bias2*color2[1])*0xff;
+                            framebuffer->data[fragment+2] = (bias0*color0[2] + bias1*color1[2] + bias2*color2[2])*0xff;
+                            framebuffer->data[fragment+3] = (bias0*color0[3] + bias1*color1[3] + bias2*color2[3])*0xff;
                             break;
 
                           // replace with incoming texel fetch
                           case srgs__object_render_mode__texture: 
-                            uv0 = ((float*)obj->verticesInterleaved+obj->indices[n*3+0])+3;
-                            uv1 = ((float*)obj->verticesInterleaved+obj->indices[n*3+1])+3;
-                            uv2 = ((float*)obj->verticesInterleaved+obj->indices[n*3+2])+3;
+                            uv0 = ((float*)obj->verticesInterleaved+SRGS__FLOATS_PER_VERTEX*obj->indices[n*3+0])+3;
+                            uv1 = ((float*)obj->verticesInterleaved+SRGS__FLOATS_PER_VERTEX*obj->indices[n*3+1])+3;
+                            uv2 = ((float*)obj->verticesInterleaved+SRGS__FLOATS_PER_VERTEX*obj->indices[n*3+2])+3;
 
                             uvx = bias0*uv0[0] + bias1*uv1[0] + bias2*uv2[0];
                             uvy = bias0*uv0[0] + bias1*uv1[0] + bias2*uv2[0];
