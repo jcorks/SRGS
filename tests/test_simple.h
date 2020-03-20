@@ -8,7 +8,7 @@ void test_simple() {
     printf("Starting: simple test\n\n");
 
     srgs_t * context = srgs_create(
-        64, 64,
+        86, 64,
         srgs_test_alloc,
         srgs_test_dealloc,
         srgs_test_realloc     
@@ -229,7 +229,7 @@ void test_simple() {
 
 
 
-    /*
+    
     uint32_t perspectiveID = srgs_matrix_create(context);
     srgs_matrix_t persp = *srgs_utility_matrix_get_identity();
     srgs_matrix_t camera = *srgs_utility_matrix_get_identity();
@@ -240,32 +240,32 @@ void test_simple() {
 
 
     srgs_matrix_set(context, perspectiveID, &result);
-    */
+    
 
 
 
     uint32_t list = srgs_renderlist_create(context);
     srgs_renderlist_set_objects(context, list, 1, &object);
-    //srgs_renderlist_set_transform(context, list, perspectiveID);
+    srgs_renderlist_set_transform(context, list, perspectiveID);
 
     int iframe = 0;
     while(1) {
 
-        srgs_utility_matrix_rotate(&matrixData, 1, 1, 0, 0);
-        srgs_utility_matrix_rotate(&matrixData, .2, 0, 1, 0);
-        srgs_utility_matrix_rotate(&matrixData, .49, 0, 0, 1);
-        /*
+        srgs_utility_matrix_rotate(&matrixData, sin(iframe/30.0)*2+1.2, 1, 0, 0);
+        srgs_utility_matrix_rotate(&matrixData, sin(iframe/30.0)*1+1.2, 0, 1, 0);
+        srgs_utility_matrix_rotate(&matrixData, sin(iframe/30.0)*.3+1.49, 0, 0, 1);
+        
         { // temp
             iframe++;
             srgs_matrix_t persp = *srgs_utility_matrix_get_identity();
             srgs_matrix_t camera = *srgs_utility_matrix_get_identity();
-            //srgs_utility_matrix_translate(&camera, .1, .1, sin(iframe/60.0)*4-4);
-            //srgs_utility_matrix_projection_perspective(&persp, 45, 1, 0.001, 3);
+            //srgs_utility_matrix_translate(&camera, .1, .1, sin(iframe/60.f));
+            srgs_utility_matrix_projection_perspective(&persp, 90, .46, 0.0001, 10);
             srgs_matrix_t result;
-            srgs_utility_matrix_multiply(&result, &camera, &persp);
+            srgs_utility_matrix_multiply(&result,  &persp, &camera);
                 srgs_matrix_set(context, perspectiveID, &result);
         }
-        */
+        
 
 
         srgs_matrix_set(context, matrixID, &matrixData);

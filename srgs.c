@@ -321,7 +321,7 @@ void srgs_texture_update(
     uint32_t y;
 
 
-    for(y = 0; y <= hSrc; ++y) {
+    for(y = 0; y < hSrc; ++y) {
         to    = ((      uint32_t*)tex->data)+(xDest + tex->w*(yDest+y));
         from  = ((const uint32_t*)src      )+(xSrc  + wSrc  *(ySrc +y));
         srgs_memcpy_int(to, from, wSrc);
@@ -692,11 +692,11 @@ srgs_id_table_t * id_table_create(srgs_t * s, uint32_t sizeofType) {
     srgs_id_table_t * out = s->alloc(sizeof(srgs_id_table_t));
     out->ctx = s;
     out->sizeAlloc = SGS_ID_TABLE__DEFAULT_ALLOC;
-    out->alloc = s->alloc(sizeof(uint32_t)*out->sizeAlloc);
     out->size = 0;
     out->sizeDead = 0;
     out->sizeDeadAlloc = 0;
     out->sizeofTypeInt = sizeofType / sizeof(uint32_t);
+    out->alloc = s->alloc(sizeof(uint32_t)*out->sizeAlloc*out->sizeofTypeInt);
     out->dead = NULL;
 }
 
